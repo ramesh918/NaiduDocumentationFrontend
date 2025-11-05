@@ -1,0 +1,15 @@
+import { QueryClient } from '@tanstack/react-query';
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 min
+      retry: 1,
+    },
+    mutations: {
+      onError: (error: any) => {
+        console.error('Mutation error', error);
+      },
+    },
+  },
+});

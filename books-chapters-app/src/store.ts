@@ -1,12 +1,18 @@
 // src/store.ts
 import { configureStore } from '@reduxjs/toolkit';
+import uiBooksReducer from './features/ui/uiBookSlice';
+import uiGenereReducer from './features/ui/uiGenereSlice';
+import uiChaptersReducer from './features/ui/uiChapterSlice';
 import genereReducer from './features/genere/genereSlice';
-import uiReducer from './features/ui/uiSlice';
+import bookReducer from './features/genere/booksSlice';
 
 export const store = configureStore({
   reducer: {
+    uiBooks: uiBooksReducer,
+    uiGeneres: uiGenereReducer,
+    uiChapters: uiChaptersReducer,
     generes: genereReducer,
-    ui: uiReducer,
+    books: bookReducer,
   },
 });
 

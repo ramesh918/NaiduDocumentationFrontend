@@ -1,100 +1,156 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { api } from '../api/apiClient';
-import CircularProgress from '@mui/material/CircularProgress';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
-import Divider from '@mui/material/Divider';
-import Alert from '@mui/material/Alert';
-import Button from '@mui/material/Button';
-
-interface Book {
-  id: string;
-  title: string;
-  description?: string;
-  genereId: string;
-}
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Box, Typography, List, ListItem, ListItemButton, ListItemText,
+  Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, IconButton, Stack, CircularProgress, Alert
+} from '@mui/material';
+import { Edit, Delete } from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSelector, useDispatch } from 'react-redux';
+import type { RootState, AppDispatch } from '../store';
+import { openBookDialog as openDialog, closeBookDialog as closeDialog, updateBookId} from '../features/ui/uiBookSlice';
+import * as api from '../api/books';
 
 export default function BooksPage() {
-  const { genereId } = useParams();
-  const [books, setBooks] = useState<Book[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useDispatch<AppDispatch>();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    async function fetchBooks() {
-      try {
-        setLoading(true);
-        setError(null);
+  const { dialogOpen, dialogMode, currentBookId } = useSelector(
+    (state: RootState) => state.uiBooks
+  );
 
-        const data = genereId
-          ? await api.getBooksByGenere(genereId)
-          : await api.getBooks();
+  // get selected genereId from Redux (selected in GenerePage)
+  const genereId = useSelector((state: RootState) => state.uiGeneres.currentGenereId);
 
-        setBooks(data);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load books');
-      } finally {
-        setLoading(false);
+  const [title, setTitle] = useState('');
+
+  // Fetch books for the selected genere
+  const { data: books, isLoading, isError } = useQuery({
+    queryKey: ['books', genereId],
+    queryFn: () => genereId ?api.getBooks(genereId): api.getBooks(),
+    enabled: !!genereId,
+  });
+
+  // Mutations
+  const createMutation = useMutation<any, Error, { title: string; genereId: string }>({
+    mutationFn: api.createBook,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['books', genereId] }),
+  });
+
+  const updateMutation = useMutation<any, Error, { id: string; patch: { title: string } }>({
+    mutationFn: ({ id, patch }) => api.updateBook(id, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['books', genereId] }),
+  });
+
+  const deleteMutation = useMutation<any, Error, string>({
+    mutationFn: api.deleteBook,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['books', genereId] }),
+  });
+
+  // Dialog handlers
+  const handleOpenCreate = () => {
+    setTitle('');
+    dispatch(openDialog({ mode: 'create' }));
+  };
+
+  const handleOpenEdit = (book: { _id: string; title: string }) => {
+    setTitle(book.title);
+    dispatch(openDialog({ mode: 'edit', bookId: book._id }));
+  };
+
+  const handleClose = () => dispatch(closeDialog());
+
+  const handleSave = async () => {
+    if (!title.trim()) return;
+
+    try {
+      if (dialogMode === 'create') {
+        await createMutation.mutateAsync({ title, genereId : genereId! });
+      } else if (dialogMode === 'edit' && currentBookId) {
+        await updateMutation.mutateAsync({ id: currentBookId, patch: { title } });
       }
+      handleClose();
+    } catch {
+      alert('Failed to save book');
     }
-    fetchBooks();
-  }, [genereId]);
+  };
 
-  if (loading)
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure?')) return;
+    try {
+      await deleteMutation.mutateAsync(id);
+    } catch {
+      alert('Failed to delete book');
+    }
+  };
 
-  if (error)
+  // UI states
+  if (!genereId)
     return (
-      <Box sx={{ mt: 4, textAlign: 'center' }}>
-        <Alert severity="error">{error}</Alert>
-      </Box>
-    );
-
-  if (books.length === 0)
-    return (
-      <Typography variant="h6" sx={{ mt: 4, textAlign: 'center' }}>
-        No books found{genereId ? ' for this genere' : ''}.
+      <Typography sx={{ mt: 4, textAlign: 'center' }}>
+        Please select a genere first.
       </Typography>
     );
+
+  if (isLoading) return <CircularProgress />;
+  if (isError) return <Alert severity="error">Failed to load books</Alert>;
 
   return (
-    <Box sx={{ maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
-      <Typography variant="h4" sx={{ mb: 3 }}>
-        {genereId ? 'Books in this Genere' : 'All Books'}
-      </Typography>
+    <Box sx={{ maxWidth: 600, m: '40px auto', textAlign: 'center' }}>
+      <Typography variant="h4" sx={{ mb: 3 }}>Manage Books</Typography>
+      <Button variant="contained" onClick={handleOpenCreate} sx={{ mb: 3 }}>
+        + Add Book
+      </Button>
 
-      <List>
-        {books.map((book) => (
-          <div key={book.id}>
-            <ListItem disablePadding>
-              <ListItemButton
-                component={Link}
-                to={`/books/${book.id}/chapters`}
-                sx={{
-                  border: '1px solid #ccc',
-                  borderRadius: '8px',
-                  mb: 1,
-                }}
+      {(!books || books.length === 0) ? (
+        <Typography>No books found for this genere</Typography>
+      ) : (
+        <List>
+          {books.map((book: any) => (
+            <div key={book._id}>
+              <ListItem
+                secondaryAction={
+                  <Stack direction="row" spacing={1}>
+                    <IconButton onClick={() => handleOpenEdit(book)}><Edit /></IconButton>
+                    <IconButton color="error" onClick={() => handleDelete(book._id)}><Delete /></IconButton>
+                  </Stack>
+                }
+                disablePadding
               >
-                <ListItemText
-                  primary={book.title}
-                  secondary={book.description || ''}
-                />
-              </ListItemButton>
-            </ListItem>
-            <Divider />
-          </div>
-        ))}
-      </List>
+                <ListItemButton
+                  onClick={()=>dispatch(updateBookId(book._id))}
+                  component={Link}
+                  to={`/books/${book._id}/chapters`}
+                  sx={{ border: '1px solid #ccc', mb: 1 }}
+                >
+                  <ListItemText primary={book.title} />
+                </ListItemButton>
+              </ListItem>
+              <Divider />
+            </div>
+          ))}
+        </List>
+      )}
+
+      <Dialog open={dialogOpen} onClose={handleClose}>
+        <DialogTitle>{dialogMode === 'create' ? 'Add Book' : 'Edit Book'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClose}>Cancel</Button>
+          <Button onClick={handleSave}>
+            {dialogMode === 'create' ? 'Create' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Box sx={{ mt: 3 }}>
         <Button component={Link} to="/genere" variant="outlined">

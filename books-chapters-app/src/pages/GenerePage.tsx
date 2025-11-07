@@ -9,12 +9,12 @@ import { Edit, Delete } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSelector, useDispatch } from 'react-redux';
 import type { RootState, AppDispatch } from '../store';
-import { openDialog, closeDialog } from '../features/ui/uiSlice';
+import {openGenereDialog as openDialog, closeGenereDialog as closeDialog, updateGenereId } from '../features/ui/uiGenereSlice';
 import * as api from '../api/apiClient';
 
 export default function GenerePage() {
   const dispatch = useDispatch<AppDispatch>();
-  const { dialogOpen, dialogMode, currentGenereId } = useSelector((state: RootState) => state.ui);
+  const { dialogOpen, dialogMode, currentGenereId } = useSelector((state: RootState) => state.uiGeneres);
   const queryClient = useQueryClient();
 
   const [title, setTitle] = useState('');
@@ -95,7 +95,7 @@ export default function GenerePage() {
                 }
                 disablePadding
               >
-                <ListItemButton component={Link} to={`/genere/${genere._id}/books`} sx={{ border: '1px solid #ccc', mb: 1 }}>
+                <ListItemButton onClick={()=>dispatch(updateGenereId(genere._id))}component={Link} to={`/genere/${genere._id}/books`} sx={{ border: '1px solid #ccc', mb: 1 }}>
                   <ListItemText primary={genere.title} />
                 </ListItemButton>
               </ListItem>
